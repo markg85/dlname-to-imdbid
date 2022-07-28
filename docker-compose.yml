@@ -1,0 +1,13 @@
+version: '3'
+services:
+  dlname2imdb:
+    build: .
+    container_name: dlname2imdb
+    restart: unless-stopped
+    environment:
+      PORT: ${PORT}
+      THEMOVIEDB_API: ${THEMOVIEDB_API}
+networks:
+  default:
+    external:
+      name: sc2
