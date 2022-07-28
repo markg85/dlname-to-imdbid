@@ -1,0 +1,27 @@
+{
+  "name": "dlname-to-imdbid",
+  "version": "1.0.0",
+  "description": "This is intended for series and movies. This webserver takes the downloaded name as input and spits out the IMDB ID as output.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/markg85/dlname-to-imdbid.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "BSD",
+  "bugs": {
+    "url": "https://github.com/markg85/dlname-to-imdbid/issues"
+  },
+  "homepage": "https://github.com/markg85/dlname-to-imdbid#readme",
+  "dependencies": {
+    "axios": "^0.27.2",
+    "fastify": "^4.3.0",
+    "oleoo": "^1.0.9",
+    "string-similarity": "^4.0.4",
+    "torrent-name-parser": "^0.6.5"
+  }
+}
