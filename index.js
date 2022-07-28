@@ -13,6 +13,10 @@ function cleanInput(input) {
     return input.trim().replace('-', ' ').replace(':', '').toLowerCase()
 }
 
+function percentage(x, a, b) {
+    return (x - a) / (b - a)
+}
+
 // Silince the darn favicon
 fastify.get('/favicon.ico', async (request, reply) => {
     return {}
