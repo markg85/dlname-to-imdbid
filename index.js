@@ -32,7 +32,7 @@ fastify.post('/', async (request, reply) => {
 
             // type can be `series` or `movie`
             // when it's `series` then a `season: number` and `episode: number` will exist too.
-            let output = {imdbid: '', type: '', season: null, episode: null, inputhash: crypto.createHash('md5').update(input).digest('hex')}
+            let output = {imdbid: '', type: '', season: null, episode: null, inputhash: crypto.createHash('md5').update(raw).digest('hex')}
     
             let parsedData = tnp(input)
             let modifiedInput = input
