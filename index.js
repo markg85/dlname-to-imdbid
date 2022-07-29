@@ -25,7 +25,10 @@ fastify.get('/favicon.ico', async (request, reply) => {
 fastify.post('/', async (request, reply) => {
     try {
         let outputArr = []
-        for (let input of request.body) {
+        for (let raw of request.body) {
+
+            // We'll likely receive files like "/bla/bla.mkv". Just gamble on taking the last part and roll with it.
+            let input = raw.split('/').pop()
 
             // type can be `series` or `movie`
             // when it's `series` then a `season: number` and `episode: number` will exist too.
