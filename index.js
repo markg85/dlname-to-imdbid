@@ -10,7 +10,10 @@ const THEMOVIEDB_API = process.env.THEMOVIEDB_API || '';
 const PORT = process.env.PORT || 9090;
 
 function cleanInput(input) {
-    return input.trim().replace('-', ' ').replace(':', '').toLowerCase()
+    return input.trim()
+    .replaceAll('-', ' ')
+    .replaceAll(':', '')
+    .toLowerCase()
 }
 
 function percentage(x, a, b) {
@@ -33,10 +36,11 @@ fastify.post('/', async (request, reply) => {
             // type can be `series` or `movie`
             // when it's `series` then a `season: number` and `episode: number` will exist too.
             let output = {imdbid: '', type: '', season: null, episode: null, inputhash: crypto.createHash('md5').update(raw).digest('hex')}
-    
-            let parsedData = tnp(input)
+
             let modifiedInput = input
             modifiedInput = cleanInput(modifiedInput); // stringSimilarity really doesn't like dashes.
+            let parsedData = tnp(modifiedInput)
+
             // Season check
             if (parsedData?.season) {
                 output.season = parseInt(parsedData?.season)
@@ -51,12 +55,12 @@ fastify.post('/', async (request, reply) => {
             // Movie check
             if (!output.season && !output.episode) {
                 // We have something but it's likely for a movie.. tnp isn't good for movies, oleo is. Try it instead.
-                parsedData = oleoo.parse(input)
+                parsedData = oleoo.parse(modifiedInput)
                 if (parsedData?.title) {
                     modifiedInput = parsedData.title
                 }
             }
-    
+
             // Lowercase all of it
             modifiedInput = modifiedInput.toLowerCase()
     
@@ -64,6 +68,7 @@ fastify.post('/', async (request, reply) => {
             let media = (parsedData?.episode != null) ? "tv" : "multi"
             let searchResponse = await axios.get(`https://api.themoviedb.org/3/search/${media}?api_key=${THEMOVIEDB_API}&language=en-US&query=${encodeURIComponent(modifiedInput)}&page=1&include_adult=true`);
             let results = searchResponse.data.results.filter(obj => obj.original_language == "en")
+
             
             // Add a string similarity rating to each result. This is a percentage that indicates how closely an entry matches our input string
             results = results.map(obj => ({ ...obj, similarity: stringSimilarity.compareTwoStrings(modifiedInput, (obj?.title) ? obj.title.toLowerCase() : obj.name.toLowerCase()) }))
@@ -137,8 +142,8 @@ fastify.post('/', async (request, reply) => {
 const start = async () => {
     try {
         console.log(THEMOVIEDB_API)
-        console.log(`DLName to IMDB ID`)
-        await fastify.listen({port: PORT, host: '0.0.0.0'})
+        console.log(`DLName to IMDB ID on port ${PORT}`)
+        fastify.listen({port: PORT, host: '0.0.0.0'})
     } catch (err) {
         console.log(err)
         process.exit(1)
