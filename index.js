@@ -26,6 +26,10 @@ fastify.get('/favicon.ico', async (request, reply) => {
 })
 
 fastify.post('/', async (request, reply) => {
+    if (THEMOVIEDB_API.length < 10) {
+        console.error(`You forget to start with THEMOVIEDB_API defined.`)
+    }
+
     try {
         let outputArr = []
         for (let raw of request.body) {
