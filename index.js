@@ -67,18 +67,22 @@ fastify.post('/', async (request, reply) => {
 
             // Lowercase all of it
             modifiedInput = modifiedInput.toLowerCase()
-    
+            
             // Get potentially matching results from the movie db
             let media = (parsedData?.episode != null) ? "tv" : "multi"
             let searchResponse = await axios.get(`https://api.themoviedb.org/3/search/${media}?api_key=${THEMOVIEDB_API}&language=en-US&query=${encodeURIComponent(modifiedInput)}&page=1&include_adult=true`);
             let results = searchResponse.data.results.filter(obj => obj.original_language == "en")
 
-            
             // Add a string similarity rating to each result. This is a percentage that indicates how closely an entry matches our input string
             results = results.map(obj => ({ ...obj, similarity: stringSimilarity.compareTwoStrings(modifiedInput, (obj?.title) ? obj.title.toLowerCase() : obj.name.toLowerCase()) }))
             
             // Sort based on that rating
             results.sort((a, b) => { return a.id - b.id })
+
+            // If we have a year, update all results with a +0.2 similarity if the release_date includes our input.
+            if (parsedData?.year.length == 4) {
+                results = results.map(obj => ({ ...obj, similarity: obj.similarity += (obj?.release_date?.includes(parsedData.year)) ? 0.2 : 0.0 }))
+            }
     
             if (results.length > 0) {
                 let bestMatch = results.reduce((prev, current) => (prev.similarity > current.similarity) ? prev : current)
