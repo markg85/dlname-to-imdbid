@@ -80,7 +80,7 @@ fastify.post('/', async (request, reply) => {
             results.sort((a, b) => { return a.id - b.id })
 
             // If we have a year, update all results with a +0.2 similarity if the release_date includes our input.
-            if (parsedData?.year.length == 4) {
+            if (parsedData?.year?.length == 4) {
                 results = results.map(obj => ({ ...obj, similarity: obj.similarity += (obj?.release_date?.includes(parsedData.year)) ? 0.2 : 0.0 }))
             }
     
