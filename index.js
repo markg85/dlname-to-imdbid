@@ -64,6 +64,33 @@ fastify.post('/', async (request, reply) => {
                     modifiedInput = parsedData.title
                 }
             }
+            
+            // Remove dots in title
+            modifiedInput = modifiedInput.replaceAll('.', ' ').trim()
+
+            let longestConsequtiveSpaces = 0;
+            let currentRange = 0;
+
+            for (let chr of modifiedInput) {
+                if (chr == ` `) {
+                    currentRange++;
+                } else {
+                    if (currentRange > longestConsequtiveSpaces) {
+                        longestConsequtiveSpaces = currentRange;
+                    }
+                    currentRange = 0;
+                }
+            }
+
+            // Some multiple spaces magic going on. Likely some release group that prefixed the release with their name followed by a couple spaces. Or a typo.
+            // TODO: We should run the search over each entry here.
+            // We just take the last entry and call it "done" for simplicity, but we could be missing the inended title here
+            if (longestConsequtiveSpaces > 1) {
+                let split = modifiedInput.split(' '.repeat(longestConsequtiveSpaces))
+                console.log(`Multiple consequtive spaces detected! Using the last entry.`)
+                console.table(split)
+                modifiedInput = split.pop()
+            }
 
             // Lowercase all of it
             modifiedInput = modifiedInput.toLowerCase()
@@ -72,6 +99,8 @@ fastify.post('/', async (request, reply) => {
             let media = (parsedData?.episode != null) ? "tv" : "multi"
             let searchResponse = await axios.get(`https://api.themoviedb.org/3/search/${media}?api_key=${THEMOVIEDB_API}&language=en-US&query=${encodeURIComponent(modifiedInput)}&page=1&include_adult=true`);
             let results = searchResponse.data.results.filter(obj => obj.original_language == "en")
+
+            console.log(`https://api.themoviedb.org/3/search/${media}?api_key=${THEMOVIEDB_API}&language=en-US&query=${encodeURIComponent(modifiedInput)}&page=1&include_adult=true`)
 
             // Add a string similarity rating to each result. This is a percentage that indicates how closely an entry matches our input string
             results = results.map(obj => ({ ...obj, similarity: stringSimilarity.compareTwoStrings(modifiedInput, (obj?.title) ? obj.title.toLowerCase() : obj.name.toLowerCase()) }))
