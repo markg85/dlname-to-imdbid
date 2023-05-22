@@ -20,80 +20,83 @@ function percentage(x, a, b) {
     return (x - a) / (b - a)
 }
 
-// Silince the darn favicon
-fastify.get('/favicon.ico', async (request, reply) => {
-    return {}
-})
-
-fastify.post('/', async (request, reply) => {
-    if (THEMOVIEDB_API.length < 10) {
-        console.error(`You forget to start with THEMOVIEDB_API defined.`)
-    }
-
+async function findImdbForInput(body, full = false) {
     try {
         let outputArr = []
-        for (let raw of request.body) {
-
-            // We'll likely receive files like "/bla/bla.mkv". Just gamble on taking the last part and roll with it.
-            let input = raw.split('/').pop()
-
+        for (let raw of body) {
+            
+            let modifiedInput = ''
+            let parsedData = {}
+            
             // type can be `series` or `movie`
             // when it's `series` then a `season: number` and `episode: number` will exist too.
             let output = {imdbid: '', type: '', season: null, episode: null, inputhash: crypto.createHash('md5').update(raw).digest('hex')}
 
-            let modifiedInput = input
-            modifiedInput = cleanInput(modifiedInput); // stringSimilarity really doesn't like dashes.
-            let parsedData = tnp(modifiedInput)
 
-            // Season check
-            if (parsedData?.season) {
-                output.season = parseInt(parsedData?.season)
-                modifiedInput = parsedData.title
-            }
-    
-            // Episode check
-            if (parsedData?.episode) {
-                output.episode = parseInt(parsedData?.episode)
-            }
-    
-            // Movie check
-            if (!output.season && !output.episode) {
-                // We have something but it's likely for a movie.. tnp isn't good for movies, oleo is. Try it instead.
-                parsedData = oleoo.parse(modifiedInput)
-                if (parsedData?.title) {
-                    modifiedInput = parsedData.title
+            // We'll likely receive files like "/bla/bla.mkv". Just gamble on taking the last part and roll with it.
+            for (let input of raw.split('/')) {
+                input = cleanInput(input); // stringSimilarity really doesn't like dashes.
+                parsedData = tnp(input)
+
+                // Season check
+                if (parsedData?.season) {
+                    output.season = parseInt(parsedData?.season)
+                    input = parsedData.title
+                }
+        
+                // Episode check
+                if (parsedData?.episode) {
+                    output.episode = parseInt(parsedData?.episode)
+                }
+        
+                // Movie check
+                if (!output.season && !output.episode) {
+                    // We have something but it's likely for a movie.. tnp isn't good for movies, oleo is. Try it instead.
+                    parsedData = oleoo.parse(input)
+                    if (parsedData?.title) {
+                        input = parsedData.title
+                    }
+                }
+                
+                // Remove dots in title
+                input = input.replaceAll('.', ' ').trim()
+
+                let longestConsequtiveSpaces = 0;
+                let currentRange = 0;
+
+                for (let chr of input) {
+                    if (chr == ` `) {
+                        currentRange++;
+                    } else {
+                        if (currentRange > longestConsequtiveSpaces) {
+                            longestConsequtiveSpaces = currentRange;
+                        }
+                        currentRange = 0;
+                    }
+                }
+
+                // Some multiple spaces magic going on. Likely some release group that prefixed the release with their name followed by a couple spaces. Or a typo.
+                // TODO: We should run the search over each entry here.
+                // We just take the last entry and call it "done" for simplicity, but we could be missing the intended title here
+                if (longestConsequtiveSpaces > 1) {
+                    let split = input.split(' '.repeat(longestConsequtiveSpaces))
+                    console.log(`Multiple consequtive spaces detected! Using the last entry.`)
+                    console.table(split)
+                    input = split.pop()
+                }
+                
+                if (parsedData?.year || parsedData?.encoding || parsedData?.codec) {
+                    // Lowercase all of it
+                    modifiedInput = input.toLowerCase()
+                    break;
                 }
             }
             
-            // Remove dots in title
-            modifiedInput = modifiedInput.replaceAll('.', ' ').trim()
-
-            let longestConsequtiveSpaces = 0;
-            let currentRange = 0;
-
-            for (let chr of modifiedInput) {
-                if (chr == ` `) {
-                    currentRange++;
-                } else {
-                    if (currentRange > longestConsequtiveSpaces) {
-                        longestConsequtiveSpaces = currentRange;
-                    }
-                    currentRange = 0;
-                }
+            if (modifiedInput == null || modifiedInput.length < 2) {
+                output.error = `Unable to parse input.`
+                outputArr.push({inputhash: output.inputhash, error: output.error})
+                continue;
             }
-
-            // Some multiple spaces magic going on. Likely some release group that prefixed the release with their name followed by a couple spaces. Or a typo.
-            // TODO: We should run the search over each entry here.
-            // We just take the last entry and call it "done" for simplicity, but we could be missing the inended title here
-            if (longestConsequtiveSpaces > 1) {
-                let split = modifiedInput.split(' '.repeat(longestConsequtiveSpaces))
-                console.log(`Multiple consequtive spaces detected! Using the last entry.`)
-                console.table(split)
-                modifiedInput = split.pop()
-            }
-
-            // Lowercase all of it
-            modifiedInput = modifiedInput.toLowerCase()
             
             // Get potentially matching results from the movie db
             let media = (parsedData?.episode != null) ? "tv" : "multi"
@@ -158,6 +161,10 @@ fastify.post('/', async (request, reply) => {
     
                 output.imdbid = externalIdResponse.data.imdb_id
                 output.type = (media == "tv") ? "series" : "movie"
+                
+                if (full) {
+                    output.full = bestMatch
+                }
     
                 // Remove season and episode from output if we had a movie
                 if (output.type == `movie`) {
@@ -173,6 +180,27 @@ fastify.post('/', async (request, reply) => {
     } catch (error) {
         return {error: error.message}
     }
+}
+
+// Silince the darn favicon
+fastify.get('/favicon.ico', async (request, reply) => {
+    return {}
+})
+
+fastify.post('/', async (request, reply) => {
+    if (THEMOVIEDB_API.length < 10) {
+        console.error(`You forget to start with THEMOVIEDB_API defined.`)
+    }
+    
+    return findImdbForInput(request.body, false)
+})
+
+fastify.post('/full', async (request, reply) => {
+    if (THEMOVIEDB_API.length < 10) {
+        console.error(`You forget to start with THEMOVIEDB_API defined.`)
+    }
+    
+    return findImdbForInput(request.body, true)
 })
 
 // Run the server!
