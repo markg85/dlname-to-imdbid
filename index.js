@@ -11,6 +11,7 @@ const PORT = process.env.PORT || 9090;
 
 function cleanInput(input) {
     return input.trim()
+    .replaceAll(/[0-9]{3,}x[0-9]{3,}/g, ' ')
     .replaceAll('-', ' ')
     .replaceAll(':', '')
     .toLowerCase()
