@@ -35,7 +35,7 @@ async function findImdbForInput(body, full = false) {
 
 
             // We'll likely receive files like "/bla/bla.mkv". Just gamble on taking the last part and roll with it.
-            for (let input of raw.split('/')) {
+            for (let input of raw.split('/').reverse()) {
                 input = cleanInput(input); // stringSimilarity really doesn't like dashes.
                 parsedData = tnp(input)
 
