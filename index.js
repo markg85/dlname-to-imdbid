@@ -6,6 +6,8 @@ const tnp = require('torrent-name-parser')
 const stringSimilarity = require('string-similarity')
 const crypto = require('crypto');
 
+tnp.configure({year: /[0-9]{4}/});
+
 const THEMOVIEDB_API = process.env.THEMOVIEDB_API || '';
 const PORT = process.env.PORT || 9090;
 
