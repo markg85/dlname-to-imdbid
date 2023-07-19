@@ -21,6 +21,7 @@
     "axios": "^0.27.2",
     "fastify": "^4.3.0",
     "oleoo": "^1.0.9",
+    "simple-json-db": "^2.0.0",
     "string-similarity": "^4.0.4",
     "torrent-name-parser": "^0.6.5"
   }

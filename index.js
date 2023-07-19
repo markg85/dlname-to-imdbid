@@ -5,6 +5,8 @@ const oleoo = require('oleoo')
 const tnp = require('torrent-name-parser')
 const stringSimilarity = require('string-similarity')
 const crypto = require('crypto');
+const JSONdb = require('simple-json-db');
+const db = new JSONdb(`${require.main.path}/imdb.json`);
 
 tnp.configure({year: /[0-9]{4}/});
 
@@ -153,7 +155,7 @@ async function findImdbForInput(body, full = false) {
                 }
     
                 type = (media_type == "tv") ? "tvshow" : "movie"
-    
+
                 let externalIdResponse = await axios.get(`https://api.themoviedb.org/3/${media_type}/${bestMatch.id}/external_ids?api_key=${THEMOVIEDB_API}&language=en-US`);
                 
                 if (externalIdResponse.data?.imdb_id?.length < 5) {
@@ -185,9 +187,39 @@ async function findImdbForInput(body, full = false) {
     }
 }
 
+async function imdbBlob(imdbid) {
+    let hasImdbid = db.has(imdbid)
+    if (!hasImdbid) {
+        try {
+            console.log(`Fetching IMDB data for ${imdbid}`)
+            let imdbResponse = await axios.get(`https://api.themoviedb.org/3/find/${imdbid}?api_key=${THEMOVIEDB_API}&language=en-US&&external_source=imdb_id`);
+
+            let results = null
+    
+            if (imdbResponse?.data?.tv_results?.length > 0) {
+                results = imdbResponse.data.tv_results[0]
+                results.title = results.name
+            } else {
+                results = imdbResponse.data.movie_results[0]
+            }
+            db.set(imdbid, results)
+        } catch (error) {
+            console.log(error)
+        }
+    }
+
+    return {cached: hasImdbid, imdb: db.get(imdbid)}
+}
+
 // Silince the darn favicon
 fastify.get('/favicon.ico', async (request, reply) => {
     return {}
+})
+
+fastify.get('/imdb/:imdbid', async (request, reply) => {
+    const { imdbid } = request.params;
+    let data = await imdbBlob(imdbid)
+    return data.imdb;
 })
 
 fastify.post('/', async (request, reply) => {
