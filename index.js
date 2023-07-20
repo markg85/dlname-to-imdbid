@@ -192,7 +192,7 @@ async function imdbBlob(imdbid) {
     if (!hasImdbid) {
         try {
             console.log(`Fetching IMDB data for ${imdbid}`)
-            let imdbResponse = await axios.get(`https://api.themoviedb.org/3/find/${imdbid}?api_key=${THEMOVIEDB_API}&language=en-US&&external_source=imdb_id`);
+            let imdbResponse = await axios.get(`https://api.themoviedb.org/3/find/${imdbid}?api_key=${THEMOVIEDB_API}&language=en-US&external_source=imdb_id`);
 
             let results = null
     
@@ -202,13 +202,53 @@ async function imdbBlob(imdbid) {
             } else {
                 results = imdbResponse.data.movie_results[0]
             }
+            
             db.set(imdbid, results)
         } catch (error) {
             console.log(error)
+            throw new Error(error);
         }
     }
 
     return {cached: hasImdbid, imdb: db.get(imdbid)}
+}
+
+async function episodeDetails(imdb, season, episode) {
+    try {
+        let imdbData = await imdbBlob(imdb);
+        let id = imdbData?.imdb?.id;
+        let imdbSeasonTag = `${imdb}_${season}`
+        let hasImdbSeasonTag = db.has(imdbSeasonTag)
+
+        if (imdbData?.imdb?.media_type != "tv") {
+            throw new Error(`Requested imdb ${imdb} is not a tv series.`);
+        }
+
+        if (id == undefined) {
+            throw new Error(`ID was undefined ${id}.`);
+        }
+
+        if (!hasImdbSeasonTag) {
+            let response = await axios.get(`https://api.themoviedb.org/3/tv/${id}/season/${season}?api_key=${THEMOVIEDB_API}&language=en-US`);
+            db.set(imdbSeasonTag, response.data)
+        }
+
+        let data = db.get(imdbSeasonTag);
+        let episodeData = data.episodes.find(item => item.episode_number == episode);
+        let returnBlob = {
+            name: episodeData.name,
+            description: episodeData.overview,
+            runtime: episodeData.runtime,
+            image: episodeData.still_path,
+            
+        }
+        return {cached: true, episode: returnBlob}
+
+
+    } catch (error) {
+        console.log(error)
+        throw new Error(error);
+    }
 }
 
 // Silince the darn favicon
@@ -220,6 +260,12 @@ fastify.get('/imdb/:imdbid', async (request, reply) => {
     const { imdbid } = request.params;
     let data = await imdbBlob(imdbid)
     return data.imdb;
+})
+
+fastify.get('/imdb/:imdbid/:season/:episode', async (request, reply) => {
+    const { imdbid, season, episode } = request.params;
+    let data = await episodeDetails(imdbid, season, episode)
+    return data.episode;
 })
 
 fastify.post('/', async (request, reply) => {
