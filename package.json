@@ -3,8 +3,10 @@
   "version": "1.0.0",
   "description": "This is intended for series and movies. This webserver takes the downloaded name as input and spits out the IMDB ID as output.",
   "main": "index.js",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "app": "node index.js"
   },
   "repository": {
     "type": "git",

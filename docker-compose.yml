@@ -3,6 +3,7 @@ services:
   dlname2imdb:
     build: .
     container_name: dlname2imdb
+    command: npm run app
     restart: unless-stopped
     environment:
       PORT: ${PORT}

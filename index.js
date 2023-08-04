@@ -1,12 +1,18 @@
-const fastify = require('fastify')({ logger: false })
-const axios = require('axios');
-const fs = require('fs');
-const oleoo = require('oleoo')
-const tnp = require('torrent-name-parser')
-const stringSimilarity = require('string-similarity')
-const crypto = require('crypto');
-const JSONdb = require('simple-json-db');
-const db = new JSONdb(`${require.main.path}/imdb.json`);
+import Fastify from 'fastify';
+import axios from 'axios';
+import oleoo from 'oleoo';
+import { default as tnp } from 'torrent-name-parser';
+import stringSimilarity from 'string-similarity';
+import crypto from 'crypto';
+import JSONdb from 'simple-json-db';
+import path from 'path'
+
+const APP_ROOT = path.dirname(process.argv[1])
+
+const fastify = Fastify({ logger: false });
+
+
+const db = new JSONdb(`${APP_ROOT}/imdb.json`);
 
 tnp.configure({year: /[0-9]{4}/});
 
@@ -25,6 +31,11 @@ function percentage(x, a, b) {
     return (x - a) / (b - a)
 }
 
+const differenceBetweenDates = (date1, date2) => {
+    const tsDifference = date1.getTime() - date2.getTime();
+    return Math.floor(tsDifference / (1000 * 60 * 60 * 24));
+};
+
 async function findImdbForInput(body, full = false) {
     try {
         let outputArr = []
@@ -36,7 +47,6 @@ async function findImdbForInput(body, full = false) {
             // type can be `series` or `movie`
             // when it's `series` then a `season: number` and `episode: number` will exist too.
             let output = {imdbid: '', type: '', season: null, episode: null, inputhash: crypto.createHash('md5').update(raw).digest('hex')}
-
 
             // We'll likely receive files like "/bla/bla.mkv". Just gamble on taking the last part and roll with it.
             for (let input of raw.split('/').reverse()) {
@@ -154,8 +164,6 @@ async function findImdbForInput(body, full = false) {
                     media_type = bestMatch.media_type
                 }
     
-                type = (media_type == "tv") ? "tvshow" : "movie"
-
                 let externalIdResponse = await axios.get(`https://api.themoviedb.org/3/${media_type}/${bestMatch.id}/external_ids?api_key=${THEMOVIEDB_API}&language=en-US`);
                 
                 if (externalIdResponse.data?.imdb_id?.length < 5) {
@@ -183,6 +191,7 @@ async function findImdbForInput(body, full = false) {
 
         return outputArr
     } catch (error) {
+        console.log(error)
         return {error: error.message}
     }
 }
@@ -219,6 +228,7 @@ async function episodeDetails(imdb, season, episode) {
         let id = imdbData?.imdb?.id;
         let imdbSeasonTag = `${imdb}_${season}`
         let hasImdbSeasonTag = db.has(imdbSeasonTag)
+        let seasonData = null;
 
         if (imdbData?.imdb?.media_type != "tv") {
             throw new Error(`Requested imdb ${imdb} is not a tv series.`);
@@ -228,8 +238,34 @@ async function episodeDetails(imdb, season, episode) {
             throw new Error(`ID was undefined ${id}.`);
         }
 
+
+        // TODO: This logic always refreshes episode data after a week.
+        // That is fine for airing series, but series (and seasons) that have completely aired probably won't change.
+        // Make this logic smarter to figure out if a season has aired (then keep it in cache). If it hasn't 
+        // completely airled yet then refresh every week.
+
+        // check the cache data of this season. We'll refresh it if it's over a week old.
+        if (hasImdbSeasonTag) {
+            seasonData = db.get(imdbSeasonTag);
+
+            // Assume the data is wrong, this causes it to be reloaded.
+            hasImdbSeasonTag = false;
+            
+            // UNLESS we have a cache date in the data and that date is within the past 7 days, then keep it as-is
+            if (seasonData?.cacheddate) {
+                let cacheddate = new Date(seasonData.cacheddate);
+
+                // We're within a week, the cache is still "good enough".
+                if (differenceBetweenDates(new Date(), cacheddate) < 7) {
+                    hasImdbSeasonTag = true;
+                }
+            }
+        }
+
+        // Load data and cache it.
         if (!hasImdbSeasonTag) {
             let response = await axios.get(`https://api.themoviedb.org/3/tv/${id}/season/${season}?api_key=${THEMOVIEDB_API}&language=en-US`);
+            response.data.cacheddate = new Date().toISOString()
             db.set(imdbSeasonTag, response.data)
         }
 
@@ -243,7 +279,6 @@ async function episodeDetails(imdb, season, episode) {
             
         }
         return {cached: true, episode: returnBlob}
-
 
     } catch (error) {
         console.log(error)
@@ -287,7 +322,6 @@ fastify.post('/full', async (request, reply) => {
 // Run the server!
 const start = async () => {
     try {
-        console.log(THEMOVIEDB_API)
         console.log(`DLName to IMDB ID on port ${PORT}`)
         fastify.listen({port: PORT, host: '0.0.0.0'})
     } catch (err) {
