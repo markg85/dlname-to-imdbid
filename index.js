@@ -100,7 +100,7 @@ async function findImdbForInput(body, full = false) {
                     input = split.pop()
                 }
                 
-                if (parsedData?.year || parsedData?.encoding || parsedData?.codec) {
+                if (parsedData?.year || parsedData?.encoding || parsedData?.codec || (parsedData?.season && parsedData?.season)) {
                     // Lowercase all of it
                     modifiedInput = input.toLowerCase()
                     break;
