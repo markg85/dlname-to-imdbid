@@ -1,9 +1,6 @@
-FROM node:20-alpine
-RUN apk add --no-cache gcompat
+FROM node:22-alpine
+RUN apk add --no-cache make cmake git g++
 
 WORKDIR /src
-COPY package*.json ./
+COPY . ./
 RUN yarn install
-# If you are building your code for production
-# RUN npm ci --only=production
-COPY . .
