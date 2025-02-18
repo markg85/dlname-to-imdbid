@@ -20,8 +20,10 @@
   },
   "homepage": "https://github.com/markg85/dlname-to-imdbid#readme",
   "dependencies": {
+    "@qdrant/js-client-rest": "^1.13.0",
     "axios": "^0.27.2",
     "fastify": "^4.3.0",
+    "node-llama-cpp": "^3.5.0",
     "oleoo": "^1.0.9",
     "simple-json-db": "^2.0.0",
     "string-similarity": "^4.0.4",
