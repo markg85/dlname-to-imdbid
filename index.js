@@ -62,11 +62,14 @@ async function getEmbeddings(title) {
     .toLowerCase();
 
   // Get an array of words
-  const words = cleanTitle.split(" ");
+  // const words = cleanTitle.split(" ");
 
   // let embeddings = await Promise.all(words.map(async (word) => (await embeddingContext.getEmbeddingFor(word)).vector));
   // embeddings.push((await embeddingContext.getEmbeddingFor(title)).vector);
   return (await embeddingContext.getEmbeddingFor(title)).vector;
+
+  // Return an array of arrays with embeddings, filter out empty elements.
+  // return embeddings.filter((subArray) => subArray.some(Boolean));
 }
 
 async function findImdbForInput(body, full = false) {
@@ -135,6 +138,9 @@ async function findImdbForInput(body, full = false) {
         mustFilter.push({ key: "year", match: { value: year } });
       }
 
+      // console.log(modifiedInput);
+      // console.log(mustFilter);
+
       // Get the best possible matching results
       const embedding = await getEmbeddings(modifiedInput);
       const res = (
@@ -155,6 +161,8 @@ async function findImdbForInput(body, full = false) {
         })
       ).points;
 
+      // console.dir(res);
+
       // Now add a string similarity score to the remaining candidates
       let remainingRes = res.map((obj) => ({ ...obj, similarity: stringSimilarity.compareTwoStrings(modifiedInput, obj.payload.title.toLowerCase()) }));
 
@@ -165,6 +173,57 @@ async function findImdbForInput(body, full = false) {
       remainingRes = remainingRes.filter((obj) => {
         return obj.score >= 0.5 && obj.similarity >= 0.7;
       });
+
+      // We can end up with 0 results here even though the original results might have well had the perfect match.
+      // Do an axilirary check:
+      if (remainingRes.length == 0) {
+        // - explode the modifiedInput to a words array
+        let wordArray = modifiedInput.split(" ");
+        if (wordArray == [] && modifiedInput.length > 0) {
+          wordArray = [modifiedInput];
+        }
+
+        // - Add a 0-initialized similarity property
+        let tempRes = res.map((obj) => ({ ...obj, similarity: 0.0 }));
+
+        // - Filter out results with a score lower then 0.5
+        tempRes = tempRes.filter((obj) => {
+          return obj.score >= 0.6;
+        });
+
+        // - If we end up with 0 result here then it's just not a match we can find.
+        if (tempRes.length == 0) {
+          output.error = `Could't match, even with relaxing rules.`;
+          outputArr.push({ inputhash: output.inputhash, error: output.error });
+          continue;
+        }
+
+        // - Loop over the words. If any of the results has the whole word it gets a +0.3, nothing if no match.
+        tempRes = tempRes.map((obj) => {
+          let multiplier = 1;
+          for (const word of wordArray) {
+            obj.similarity += stringSimilarity.compareTwoStrings(word, obj.payload.title.toLowerCase());
+            multiplier += obj.payload.title.toLowerCase().includes(word) ? 3 : -1;
+          }
+
+          obj.similarity *= Math.max(0, multiplier);
+
+          return obj;
+        });
+
+        // - And now we do the normal filtering again.
+        tempRes = tempRes.filter((obj) => {
+          return obj.score >= 0.5 && obj.similarity >= 0.7;
+        });
+
+        // If we still have something left, use this as our new remainingRes object
+        if (tempRes.length > 0) {
+          remainingRes = tempRes;
+        }
+      }
+
+      // console.table(parsedData);
+      // console.dir(remainingRes);
 
       // Sort based on similarity
       remainingRes.sort((a, b) => {
@@ -193,6 +252,8 @@ async function findImdbForInput(body, full = false) {
 
       // If we have nothing left, continue.
       if (remainingRes.length == 0) {
+        output.error = `The found series/movie doesn't have an IMDB ID in this API.`;
+        outputArr.push({ inputhash: output.inputhash, error: output.error });
         continue;
       }
 
