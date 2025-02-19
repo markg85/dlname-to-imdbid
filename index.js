@@ -33,6 +33,7 @@ function cleanInput(input) {
   return input
     .trim()
     .replaceAll(/[0-9]{3,}x[0-9]{3,}/g, " ")
+    .replaceAll(/\d{5,}/g, " ")
     .replaceAll("-", " ")
     .replaceAll(":", "")
     .replaceAll(/\s+/g, " ") // replace n-spaces with just 1. `foo   bar  baz` becomes `foo bar baz`
@@ -57,6 +58,7 @@ async function getEmbeddings(title) {
   // - lowercase
   const cleanTitle = title
     .replace(/[^a-zA-Z0-9]/g, " ")
+    .replace(/\d{5,}/g, " ")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
@@ -127,7 +129,7 @@ async function findImdbForInput(body, full = false) {
       const isMovie = parsedData?.type == "movie" || parsedData?.season == null || parsedData?.episode == null;
 
       // Get the year part if it's parsable, else just NaN
-      const year = parseInt(parsedData?.year || NaN);
+      let year = parseInt(parsedData?.year || NaN);
 
       // Filter on movie or series
       const mustFilter = [];
