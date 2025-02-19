@@ -124,7 +124,7 @@ async function findImdbForInput(body, full = false) {
       }
 
       // Determine is we have a movie. If not then it's a series.
-      const isMovie = parsedData?.season == null && parsedData?.episode == null && parsedData?.type == "movie";
+      const isMovie = parsedData?.type == "movie" || parsedData?.season == null || parsedData?.episode == null;
 
       // Get the year part if it's parsable, else just NaN
       const year = parseInt(parsedData?.year || NaN);
@@ -139,7 +139,8 @@ async function findImdbForInput(body, full = false) {
       }
 
       // console.log(modifiedInput);
-      // console.log(mustFilter);
+      console.log(mustFilter);
+      console.log(parsedData);
 
       // Get the best possible matching results
       const embedding = await getEmbeddings(modifiedInput);
