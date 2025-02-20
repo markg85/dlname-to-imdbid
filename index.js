@@ -24,8 +24,6 @@ let qdrclient = null;
 
 const db = new JSONdb(`${APP_ROOT}/imdb.json`);
 
-tnp.configure({ year: /[0-9]{4}/ });
-
 const THEMOVIEDB_API = process.env.THEMOVIEDB_API || "";
 const PORT = process.env.PORT || 9090;
 
@@ -141,8 +139,8 @@ async function findImdbForInput(body, full = false) {
       }
 
       // console.log(modifiedInput);
-      console.log(mustFilter);
-      console.log(parsedData);
+      // console.log(mustFilter);
+      // console.log(parsedData);
 
       // Get the best possible matching results
       const embedding = await getEmbeddings(modifiedInput);
@@ -206,13 +204,15 @@ async function findImdbForInput(body, full = false) {
           let multiplier = 1;
           for (const word of wordArray) {
             obj.similarity += stringSimilarity.compareTwoStrings(word, obj.payload.title.toLowerCase());
-            multiplier += obj.payload.title.toLowerCase().includes(word) ? 3 : -1;
+            multiplier += obj.payload.title.toLowerCase().includes(word) ? 3 : -3;
           }
 
           obj.similarity *= Math.max(0, multiplier);
 
           return obj;
         });
+
+        console.log(tempRes);
 
         // - And now we do the normal filtering again.
         tempRes = tempRes.filter((obj) => {
