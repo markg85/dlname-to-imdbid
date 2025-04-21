@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Torrent name to iMDB</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: #f8f9fa;
+            margin: 0;
+        }
+        .search-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .search-box {
+            max-width: 600px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        #results {
+            margin-top: 30px;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .card-deck {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+        .media-card {
+            width: 100%;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.4s ease;
+            display: flex;
+            flex-direction: row;
+        }
+        .media-card.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .loading-spinner {
+            display: none;
+        }
+        .imdb-id {
+            font-family: monospace;
+            font-size: 0.9rem;
+            color: #6c757d;
+        }
+        .imdb-id a {
+            color: inherit;
+            text-decoration: none;
+        }
+        .imdb-id a:hover {
+            text-decoration: underline;
+            color: #0d6efd;
+        }
+        .season-episode {
+            font-family: monospace;
+            font-size: 0.9rem;
+            color: #6c757d;
+            margin-top: 0.25rem;
+        }
+        .card-img-container {
+            width: 120px;
+            min-width: 120px;
+            height: 160px;
+            background-color: #f8f9fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .card-img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            object-position: center;
+        }
+        .card {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border: none;
+            border-radius: 8px;
+            overflow: hidden;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            display: flex;
+            flex-direction: row;
+            flex-grow: 1;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .card-body {
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .card-title {
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .search-box {
+            position: relative;
+        }
+        .search-box:after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 2px;
+            background: #0d6efd;
+            transition: width 0.3s ease;
+        }
+        .search-box.focused:after {
+            width: 100%;
+        }
+        .alert-warning {
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.4s ease;
+            margin-bottom: 20px;
+        }
+        .alert-warning.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        @media (max-width: 576px) {
+            .card-img-container {
+                width: 100px;
+                min-width: 100px;
+                height: 140px;
+            }
+            .card-body {
+                padding: 0.75rem;
+            }
+            .card-title {
+                font-size: 0.95rem;
+            }
+            .imdb-id, .season-episode {
+                font-size: 0.85rem;
+            }
+            .card-text {
+                font-size: 0.85rem;
+            }
+        }
+
+        @media (max-width: 400px) {
+            .card-img-container {
+                width: 80px;
+                min-width: 80px;
+                height: 120px;
+            }
+            .card-body {
+                padding: 0.6rem;
+            }
+            .card-title {
+                font-size: 0.9rem;
+            }
+            .imdb-id, .season-episode {
+                font-size: 0.8rem;
+            }
+            .card-text {
+                font-size: 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="search-container">
+        <div class="container">
+            <div class="row justify-content-center">
+                <div class="col-md-8 text-center">
+                    <h1 class="mb-4">Torrent name to iMDB</h1>
+                    <div class="search-box" id="searchBox">
+                        <div class="input-group mb-3">
+                            <input type="text" class="form-control form-control-lg" id="searchInput" placeholder="Search for a movie or series..." aria-label="Search">
+                            <button class="btn btn-primary" type="button" id="searchButton">
+                                <span id="searchText">Search</span>
+                                <div id="loadingSpinner" class="spinner-border spinner-border-sm loading-spinner" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="results" class="card-deck"></div>
+        </div>
+    </div>
+    <!-- Bootstrap 5 JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.getElementById('searchInput');
+            const searchButton = document.getElementById('searchButton');
+            const resultsDiv = document.getElementById('results');
+            const searchText = document.getElementById('searchText');
+            const loadingSpinner = document.getElementById('loadingSpinner');
+            const searchBox = document.getElementById('searchBox');
+            let isSearching = false;
+            let lastSearchTime = 0;
+            const minSearchInterval = 2000; // 2 seconds between searches
+            let currentWarning = null;
+            
+            // Add focus/blur effects to search box
+            searchInput.addEventListener('focus', () => searchBox.classList.add('focused'));
+            searchInput.addEventListener('blur', () => searchBox.classList.remove('focused'));
+            
+            function setLoading(isLoading) {
+                if (isLoading) {
+                    searchText.style.display = 'none';
+                    loadingSpinner.style.display = 'inline-block';
+                    searchButton.disabled = true;
+                    searchInput.disabled = true;
+                } else {
+                    searchText.style.display = 'inline';
+                    loadingSpinner.style.display = 'none';
+                    searchButton.disabled = false;
+                    searchInput.disabled = false;
+                }
+            }
+            
+            function formatSeasonEpisode(season, episode) {
+                if (typeof season !== 'number' || typeof episode !== 'number') {
+                    return null;
+                }
+                // Zero-pad both season and episode to at least 2 digits
+                const paddedSeason = String(season).padStart(2, '0');
+                const paddedEpisode = String(episode).padStart(2, '0');
+                return `S${paddedSeason}E${paddedEpisode}`;
+            }
+            
+            function safeGet(obj, prop, defaultValue = null) {
+                try {
+                    return obj && obj[prop] !== undefined ? obj[prop] : defaultValue;
+                } catch (e) {
+                    return defaultValue;
+                }
+            }
+            
+            function formatDate(dateString) {
+                if (!dateString) return null;
+                
+                try {
+                    const date = new Date(dateString);
+                    return isNaN(date.getTime()) ? null : date;
+                } catch (e) {
+                    return null;
+                }
+            }
+            
+            function isValidCardData(item) {
+                if (!item || typeof item !== 'object') return false;
+                
+                // Must have imdbid
+                if (!item.imdbid || typeof item.imdbid !== 'string') return false;
+                
+                // Must have valid media object
+                const media = safeGet(item, 'full');
+                if (!media || typeof media !== 'object') return false;
+                
+                // Must have either title or name
+                if (!safeGet(media, 'title') && !safeGet(media, 'name')) return false;
+                
+                return true;
+            }
+            
+            function createCardElement(item) {
+                if (!isValidCardData(item)) return null;
+                
+                const media = item.full;
+                const imdbId = item.imdbid;
+                const mediaType = item.type || '';
+                
+                // Get title (we know at least one exists from validation)
+                const title = media.title || media.name;
+                
+                // Format date if available
+                const dateObj = formatDate(media.release_date || media.first_air_date);
+                const formattedDate = dateObj ? 
+                    dateObj.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : 
+                    null;
+                
+                // Get season/episode if available
+                const seasonEpisode = (mediaType === 'series' && item.season !== undefined && item.episode !== undefined) ?
+                    formatSeasonEpisode(item.season, item.episode) : null;
+                
+                // Create card element
+                const card = document.createElement('div');
+                card.className = 'card media-card';
+                
+                // Create image container
+                const imgContainer = document.createElement('div');
+                imgContainer.className = 'card-img-container';
+                
+                const posterPath = safeGet(media, 'poster_path');
+                if (posterPath) {
+                    const img = document.createElement('img');
+                    img.src = `https://image.tmdb.org/t/p/w500${posterPath}`;
+                    img.alt = title;
+                    img.className = 'card-img';
+                    img.onerror = function() {
+                        this.style.display = 'none';
+                        const placeholder = document.createElement('div');
+                        placeholder.innerHTML = '<i class="bi bi-film text-muted" style="font-size: 2rem;"></i>';
+                        imgContainer.appendChild(placeholder);
+                    };
+                    imgContainer.appendChild(img);
+                } else {
+                    const placeholder = document.createElement('div');
+                    placeholder.innerHTML = '<i class="bi bi-film text-muted" style="font-size: 2rem;"></i>';
+                    imgContainer.appendChild(placeholder);
+                }
+                
+                // Create card body
+                const cardBody = document.createElement('div');
+                cardBody.className = 'card-body';
+                
+                cardBody.innerHTML = `
+                    <h5 class="card-title">${title}</h5>
+                    <div class="imdb-id">
+                        <a href="https://www.imdb.com/title/${imdbId}/" target="_blank">${imdbId}</a>
+                    </div>
+                    ${seasonEpisode ? `<div class="season-episode">${seasonEpisode}</div>` : ''}
+                    ${formattedDate ? `
+                    <p class="card-text"><small class="text-muted">
+                        ${mediaType === 'movie' ? 'Released' : 'First aired'}: ${formattedDate}
+                    </small></p>
+                    ` : ''}
+                `;
+                
+                // Assemble the card
+                card.appendChild(imgContainer);
+                card.appendChild(cardBody);
+                
+                return card;
+            }
+            
+            function showWarning(message) {
+                // Remove any existing warning
+                if (currentWarning) {
+                    currentWarning.remove();
+                }
+                
+                currentWarning = document.createElement('div');
+                currentWarning.className = 'alert alert-warning';
+                currentWarning.textContent = message;
+                resultsDiv.insertBefore(currentWarning, resultsDiv.firstChild);
+                animateElement(currentWarning);
+            }
+            
+            function animateElement(element) {
+                if (!element) return;
+                
+                setTimeout(() => {
+                    try {
+                        element.classList.add('show');
+                    } catch (e) {
+                        console.error('Animation error:', e);
+                    }
+                }, 10);
+            }
+            
+            async function performSearch() {
+                const query = (searchInput.value || '').trim();
+                
+                // Validate input
+                if (!query) {
+                    showWarning('Please enter a search term');
+                    return;
+                }
+                
+                if (query.length < 2) {
+                    showWarning('Search term too short');
+                    return;
+                }
+                
+                const currentTime = Date.now();
+                if (isSearching || (currentTime - lastSearchTime < minSearchInterval)) {
+                    return;
+                }
+                
+                isSearching = true;
+                lastSearchTime = currentTime;
+                setLoading(true);
+                
+                try {
+                    // API call to get media info
+                    const response = await fetch('https://dlname2imdb.sc2.nl/full', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify([query])
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('Unable to process your request');
+                    }
+                    
+                    const results = await response.json().catch(() => {
+                        throw new Error('Invalid response from server');
+                    });
+                    
+                    if (!Array.isArray(results) || results.length === 0) {
+                        showWarning('No results found - try a different search');
+                        return; // Keep the query in the input box
+                    }
+                    
+                    const item = results[0];
+                    const cardElement = createCardElement(item);
+                    
+                    if (cardElement) {
+                        // Remove any existing warning
+                        if (currentWarning) {
+                            currentWarning.remove();
+                            currentWarning = null;
+                        }
+                        
+                        // Add valid card to DOM
+                        resultsDiv.insertBefore(cardElement, resultsDiv.firstChild);
+                        animateElement(cardElement);
+                        searchInput.value = '';
+                    } else {
+                        showWarning('No results found - try a different search');
+                    }
+                    
+                } catch (error) {
+                    showWarning('No results found - try a different search');
+                    console.error('Search error:', error);
+                    
+                } finally {
+                    isSearching = false;
+                    setLoading(false);
+                }
+            }
+            
+            // Handle search button click
+            searchButton.addEventListener('click', performSearch);
+            
+            // Handle Enter key in search input
+            searchInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    performSearch();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
