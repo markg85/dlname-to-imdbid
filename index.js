@@ -39,8 +39,16 @@ function cleanInput(input) {
     .toLowerCase();
 }
 
-function percentage(x, a, b) {
-  return (x - a) / (b - a);
+function percentage(x, min, max) {
+  if (min === max) {
+    return x <= min ? 0.0 : 1.0; // Edge case: Avoid division by zero
+  }
+
+  // Calculate interpolation (works for ascending/descending ranges)
+  const interpolated = (x - min) / (max - min);
+
+  // Clamp between 0.0 and 1.0
+  return Math.min(1.0, Math.max(0.0, interpolated));
 }
 
 const differenceBetweenDates = (date1, date2) => {
@@ -84,7 +92,9 @@ async function findImdbForInput(body, full = false) {
       let output = { imdbid: "", type: "", season: null, episode: null, inputhash: crypto.createHash("md5").update(raw).digest("hex") };
 
       // We'll likely receive files like "/bla/bla.mkv". Just gamble on taking the last part and roll with it.
-      for (let input of raw.split("/").reverse()) {
+      for (const origInput of raw.split("/").reverse()) {
+        let input = origInput;
+
         input = cleanInput(input); // stringSimilarity really doesn't like dashes.
         parsedData = tnp(input);
 
@@ -101,8 +111,12 @@ async function findImdbForInput(body, full = false) {
           output.episode = parseInt(parsedData?.episode);
         }
 
+        const oneOfSeasonEpisode = (output.season == null && output.episode != null) || (output.episode == null && output.season != null);
+        const probablyMovie = output.season != null && output.episode != null ? false : oneOfSeasonEpisode ? false : true;
+        const hasYear = (parsedData?.year && parsedData?.year > 0) || false;
+
         // Movie check
-        if (!output.season && !output.episode) {
+        if ((oneOfSeasonEpisode && hasYear) || probablyMovie) {
           // We have something but it's likely for a movie.. tnp isn't good for movies, oleo is. Try it instead.
           parsedData = oleoo.parse(input);
           if (parsedData?.title) {
@@ -124,23 +138,29 @@ async function findImdbForInput(body, full = false) {
       }
 
       // Determine is we have a movie. If not then it's a series.
-      const isMovie = parsedData?.type == "movie" || parsedData?.season == null || parsedData?.episode == null;
+      let isExplicitMovie = parsedData?.type == "movie";
+      let isExplicitSeries = !isExplicitMovie && (parsedData?.season != null || parsedData?.episode != null);
 
       // Get the year part if it's parsable, else just NaN
       let year = parseInt(parsedData?.year || NaN);
 
       // Filter on movie or series
       const mustFilter = [];
-      mustFilter.push({ key: "type", match: { value: isMovie ? "m" : "s" } });
+
+      if (isExplicitMovie) {
+        mustFilter.push({ key: "type", match: { value: "m" } });
+      } else if (isExplicitSeries) {
+        mustFilter.push({ key: "type", match: { value: "s" } });
+      }
 
       // If we have a year, we require the results to match that year
       if (!isNaN(year)) {
         mustFilter.push({ key: "year", match: { value: year } });
       }
 
-      // console.log(modifiedInput);
-      // console.log(mustFilter);
-      // console.log(parsedData);
+      console.log(modifiedInput);
+      console.log(mustFilter);
+      console.log(parsedData);
 
       // Get the best possible matching results
       const embedding = await getEmbeddings(modifiedInput);
@@ -158,22 +178,100 @@ async function findImdbForInput(body, full = false) {
               oversampling: 2.0,
             },
           },
-          limit: 10,
+          limit: 50,
         })
       ).points;
+
+      // const res = (
+      //   await qdrclient.query("imdb", {
+      //     prefetch: {
+      //       query: embedding,
+      //       filter: {
+      //         must: mustFilter,
+      //       },
+      //       params: {
+      //         quantization: {
+      //           ignore: false,
+      //           rescore: true,
+      //           oversampling: 2.0,
+      //         },
+      //       },
+      //       limit: 50,
+      //     },
+      //     query: {
+      //       formula: {
+      //         sum: [
+      //           "$score",
+      //           {
+      //             mult: [0.25, { key: "has_runtime", match: { value: true } }],
+      //           },
+      //         ],
+      //       },
+      //     },
+      //     with_payload: true,
+      //   })
+      // ).points;
 
       // console.dir(res);
 
       // Now add a string similarity score to the remaining candidates
       let remainingRes = res.map((obj) => ({ ...obj, similarity: stringSimilarity.compareTwoStrings(modifiedInput, obj.payload.title.toLowerCase()) }));
 
+      // Rescore the score itself, grab the highest score and the lowest score and, calculate a `rescore` property that is between 0 and 1.
+      let maxScore = Math.max(...remainingRes.map((obj) => obj.score));
+      let minScore = Math.min(...remainingRes.map((obj) => obj.score));
+      remainingRes = remainingRes.map((obj) => ({ ...obj, oldscore: obj.score, score: percentage(obj.score, minScore, maxScore) }));
+
+      if (maxScore === minScore) {
+        maxScore = 0;
+      }
+
       // Now we WILL have results, just how embeddings work. They could be completely off garbage and they could be spot on.
       // They should be spot on if the thing we're looking for is in our database.
       // However, we can't rely on it. If the database is outdated we might get false positives.
       // So iterate over the results, we're only going to consider db scores above 0.5 and a similarity of above 0.7.
       remainingRes = remainingRes.filter((obj) => {
-        return obj.score >= 0.5 && obj.similarity >= 0.7;
+        return obj.score >= 0.6;
       });
+
+      // console.dir(remainingRes);
+
+      // Now rescore the `score` property based on the `similarity` property. Get a min and max similarity and calculate the percentage
+      let minSimilarity = Math.min(...remainingRes.map((obj) => obj.similarity));
+      const maxSimilarity = Math.max(...remainingRes.map((obj) => obj.similarity));
+
+      // If our max similarity is low, empty remainingRes (0.5 is low enough)
+      if (maxSimilarity < 0.5) {
+        remainingRes = [];
+      }
+
+      // Count how many have the same similarity
+      const countSameSimilarity = remainingRes.filter((obj) => obj.similarity === maxSimilarity).length;
+
+      if (minSimilarity === maxSimilarity) {
+        minSimilarity = 0;
+      }
+
+      // Take 0.2 from the similarity if there is a higher similarity AND if the current one has `has_runtime` set to false.
+      remainingRes = remainingRes.map((obj) => {
+        if (obj.payload.has_runtime === false) {
+          if (obj.similarity < maxSimilarity) {
+            obj.similarity -= 0.2;
+          } else if (countSameSimilarity > 1) {
+            obj.similarity -= 0.2;
+          }
+        }
+        return obj;
+      });
+
+      remainingRes = remainingRes.map((obj) => ({ ...obj, score: percentage(obj.similarity, minSimilarity, maxSimilarity) }));
+
+      remainingRes = remainingRes.filter((obj) => {
+        // return obj.score >= 0.5 && obj.similarity >= 0.7;
+        return obj.score >= 0.8;
+      });
+
+      // console.dir(remainingRes);
 
       // We can end up with 0 results here even though the original results might have well had the perfect match.
       // Do an axilirary check:
@@ -185,7 +283,7 @@ async function findImdbForInput(body, full = false) {
         }
 
         // - Add a 0-initialized similarity property
-        let tempRes = res.map((obj) => ({ ...obj, similarity: 0.0 }));
+        let tempRes = res.map((obj) => ({ ...obj, similarity: stringSimilarity.compareTwoStrings(modifiedInput, obj.payload.title.toLowerCase()) }));
 
         // - Filter out results with a score lower then 0.5
         tempRes = tempRes.filter((obj) => {
@@ -201,18 +299,21 @@ async function findImdbForInput(body, full = false) {
 
         // - Loop over the words. If any of the results has the whole word it gets a +0.3, nothing if no match.
         tempRes = tempRes.map((obj) => {
-          let multiplier = 1;
+          let scoreAdjustment = 0;
           for (const word of wordArray) {
-            obj.similarity += stringSimilarity.compareTwoStrings(word, obj.payload.title.toLowerCase());
-            multiplier += obj.payload.title.toLowerCase().includes(word) ? 3 : -3;
+            if (new RegExp(`\\b${word}\\b`, "i").test(obj.payload.title.toLowerCase())) {
+              scoreAdjustment += 0.1;
+            } else {
+              scoreAdjustment -= 0.2;
+            }
           }
 
-          obj.similarity *= Math.max(0, multiplier);
+          obj.score += scoreAdjustment;
 
           return obj;
         });
 
-        console.log(tempRes);
+        // console.log(tempRes);
 
         // - And now we do the normal filtering again.
         tempRes = tempRes.filter((obj) => {
@@ -233,17 +334,28 @@ async function findImdbForInput(body, full = false) {
         return b.similarity - a.similarity;
       });
 
+      // console.dir(remainingRes);
+
       // Do we have items left?
       if (remainingRes.length > 1) {
-        // Reduce it down to 1.
+        // Reduce it down to the equal highest matches (should be 1 but could be multiple).
         // Filter again but this time take the similarity of the first item and only keep others with an equal similarity
         remainingRes = remainingRes.filter((obj) => {
           return obj.similarity == remainingRes[0].similarity;
         });
       }
 
+      // If we still have +1 items left, filter out by scory above 0.85.
+      if (remainingRes.length > 1) {
+        remainingRes = remainingRes.filter((obj) => {
+          return obj.score > 0.85;
+        });
+      }
+
+      // console.dir(remainingRes);
+
       // Do we STILL have +1 items left? Damn! Must be a series or movie with the same name over different years.
-      // Take the newest year. Note that this is only possible when the search query didn't had a year in it (unlikely).
+      // Take the newest year. Note that this is only possible when the search query didn't had a year (which is mostly for series a likely scenario).
       if (remainingRes.length > 1) {
         // Sort by year and remove all but the first one
         const maxYear = Math.max(...remainingRes.map((obj) => obj.payload.year));
@@ -266,7 +378,15 @@ async function findImdbForInput(body, full = false) {
       const imdbid = `tt` + tempImdbString.padStart(7, "0");
 
       output.imdbid = imdbid;
-      output.type = isMovie ? "movie" : "series";
+      if (isExplicitMovie) {
+        output.type = "movie";
+      } else if (isExplicitSeries) {
+        output.type = "series";
+      } else {
+        output.error = `There was a detection but no explicit movie or series. Parser bug!`;
+        outputArr.push({ inputhash: output.inputhash, error: output.error });
+        continue;
+      }
 
       // Remove season and episode from output if we had a movie
       if (output.type == `movie`) {
@@ -371,6 +491,8 @@ async function episodeDetails(imdb, season, episode) {
       db.set(imdbSeasonTag, response.data);
     }
 
+    let imdbdata = await imdbBlob(imdb);
+
     let data = db.get(imdbSeasonTag);
     let episodeData = data.episodes.find((item) => item.episode_number == episode);
     let returnBlob = {
@@ -378,6 +500,9 @@ async function episodeDetails(imdb, season, episode) {
       description: episodeData.overview,
       runtime: episodeData.runtime,
       image: episodeData.still_path,
+      backdrop: imdbdata.imdb.backdrop_path,
+      seriesposter: imdbdata.imdb.poster_path,
+      airdate: new Date(Date.UTC(...episodeData.air_date.split("-").map(Number))),
     };
     return { cached: true, episode: returnBlob };
   } catch (error) {
