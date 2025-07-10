@@ -98,36 +98,12 @@ async function findImdbForInput(body, full = false) {
         input = cleanInput(input); // stringSimilarity really doesn't like dashes.
         parsedData = tnp(input);
 
-        // console.log(parsedData);
+        output.season = parseInt(parsedData?.season) || null;
+        output.episode = parseInt(parsedData?.episode) || null;
 
-        // Season check
-        if (parsedData?.season) {
-          output.season = parseInt(parsedData?.season);
+        parsedData = oleoo.parse(input);
+        if (parsedData?.title) {
           input = parsedData.title;
-
-          // If we have a season but no episode, just fill in a default episode number.
-          // This likely is for queries where we have a S01 torrent, like a whole season.
-          if (!parsedData?.episode) {
-            parsedData.episode = 1;
-          }
-        }
-
-        // Episode check
-        if (parsedData?.episode) {
-          output.episode = parseInt(parsedData?.episode);
-        }
-
-        const oneOfSeasonEpisode = (output.season == null && output.episode != null) || (output.episode == null && output.season != null);
-        const probablyMovie = output.season != null && output.episode != null ? false : oneOfSeasonEpisode ? false : true;
-        const hasYear = (parsedData?.year && parsedData?.year > 0) || false;
-
-        // Movie check
-        if ((oneOfSeasonEpisode && hasYear) || probablyMovie) {
-          // We have something but it's likely for a movie.. tnp isn't good for movies, oleo is. Try it instead.
-          parsedData = oleoo.parse(input);
-          if (parsedData?.title) {
-            input = parsedData.title;
-          }
         }
 
         if (parsedData?.year || parsedData?.encoding || parsedData?.codec || parsedData?.season) {
