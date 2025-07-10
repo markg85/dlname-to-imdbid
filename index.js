@@ -307,7 +307,8 @@ async function findImdbForInput(body, full = false) {
         tempRes = tempRes.map((obj) => {
           let scoreAdjustment = 0;
           for (const word of wordArray) {
-            if (new RegExp(`\\b${word}\\b`, "i").test(obj.payload.title.toLowerCase())) {
+            const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape special characters in the word
+            if (new RegExp(`\\b${escapedWord}\\b`, "i").test(obj.payload.title.toLowerCase())) {
               scoreAdjustment += 0.1;
             } else {
               scoreAdjustment -= 0.2;
