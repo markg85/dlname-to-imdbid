@@ -104,6 +104,12 @@ async function findImdbForInput(body, full = false) {
         if (parsedData?.season) {
           output.season = parseInt(parsedData?.season);
           input = parsedData.title;
+
+          // If we have a season but no episode, just fill in a default episode number.
+          // This likely is for queries where we have a S01 torrent, like a whole season.
+          if (!parsedData?.episode) {
+            parsedData.episode = 1;
+          }
         }
 
         // Episode check
@@ -124,7 +130,7 @@ async function findImdbForInput(body, full = false) {
           }
         }
 
-        if (parsedData?.year || parsedData?.encoding || parsedData?.codec || (parsedData?.season && parsedData?.season)) {
+        if (parsedData?.year || parsedData?.encoding || parsedData?.codec || parsedData?.season) {
           // Lowercase all of it
           modifiedInput = input.toLowerCase();
           break;
